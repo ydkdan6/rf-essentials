@@ -228,7 +228,7 @@ const SignUp: React.FC = () => {
           className="h-full"
         >
           <img
-            src="https://images.pexels.com/photos/3785147/pexels-photo-3785147.jpeg?auto=compress&cs=tinysrgb&w=800"
+            src="./img4.png"
             alt="Skincare Products"
             className="h-full w-full object-cover"
           />

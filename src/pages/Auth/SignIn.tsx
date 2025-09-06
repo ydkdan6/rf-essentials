@@ -171,7 +171,7 @@ const SignIn: React.FC = () => {
           className="h-full"
         >
           <img
-            src="https://images.pexels.com/photos/3762879/pexels-photo-3762879.jpeg?auto=compress&cs=tinysrgb&w=800"
+            src="./img2.png"
             alt="Beauty Products"
             className="h-full w-full object-cover"
           />
