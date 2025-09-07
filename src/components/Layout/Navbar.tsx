@@ -12,8 +12,14 @@ const Navbar: React.FC = () => {
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+    try {
+      await signOut();
+      navigate('/'); // or '/auth' or wherever your login page is
+    } catch (error) {
+      console.error('Error signing out:', error);
+      // Still navigate even if there's an error
+      navigate('/');
+    }
   };
 
   const cartItemCount = items.reduce((total, item) => total + item.quantity, 0);

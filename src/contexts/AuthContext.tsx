@@ -23,15 +23,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Get initial session
     const getInitialSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted && session?.user) {
-          await loadUserData(session.user.id);
-        } else if (mounted) {
-          setLoading(false);
+        setLoading(true);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (mounted) {
+          if (session?.user) {
+            await loadUserData(session.user.id);
+          } else {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
         if (mounted) {
+          setUser(null);
+          setProfile(null);
           setLoading(false);
         }
       }
@@ -42,6 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+
+      console.log('Auth state changed:', event, session?.user?.id);
 
       if (session?.user) {
         await loadUserData(session.user.id);
@@ -60,44 +80,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUserData = async (userId: string) => {
     try {
-      setLoading(true);
+      console.log('Loading user data for:', userId);
       
-      // Load user data
+      // Always get the current auth user first
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('Error getting auth user:', authError);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!authUser) {
+        console.log('No authenticated user found');
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      // Try to load user data from database
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
         .single();
 
+      let finalUserData: User;
+
       if (userError) {
-        console.error('Error loading user:', userError);
-        // If user doesn't exist in users table, we might still want to show them as authenticated
-        // but without extended user data
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          setUser({
-            id: authUser.id,
-            email: authUser.email || '',
-            full_name: authUser.user_metadata?.full_name || '',
-            role: 'buyer'
-          } as User);
+        console.error('Error loading user from database:', userError);
+        
+        // If user doesn't exist in users table, create minimal user object from auth data
+        finalUserData = {
+          id: authUser.id,
+          email: authUser.email || '',
+          full_name: authUser.user_metadata?.full_name || '',
+          role: 'buyer'
+        } as User;
+
+        // Optionally, try to create the user record in the database
+        try {
+          const { error: createError } = await supabase
+            .from('users')
+            .insert({
+              id: authUser.id,
+              email: authUser.email || '',
+              full_name: authUser.user_metadata?.full_name || '',
+              role: 'buyer',
+            });
+
+          if (createError) {
+            console.error('Error creating user record:', createError);
+          } else {
+            console.log('Created missing user record');
+          }
+        } catch (createErr) {
+          console.error('Failed to create user record:', createErr);
         }
-        setLoading(false);
-        return;
+      } else {
+        finalUserData = userData;
       }
 
-      setUser(userData);
+      setUser(finalUserData);
 
       // Load profile data (optional, don't fail if it doesn't exist)
-      const { data: profileData } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
 
-      setProfile(profileData);
+        if (profileError && profileError.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.error('Error loading profile:', profileError);
+        } else {
+          setProfile(profileData);
+        }
+      } catch (profileErr) {
+        console.error('Profile loading failed:', profileErr);
+        // Don't fail the entire process for profile errors
+      }
+
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('Error in loadUserData:', error);
+      setUser(null);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -105,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -112,15 +183,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      // Don't set loading here - let the auth state change handler manage it
+      // The auth state change handler will manage loading state
       return data;
     } catch (error: any) {
+      setLoading(false);
       throw error;
     }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
+      setLoading(true);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -152,13 +225,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return data;
     } catch (error: any) {
+      setLoading(false);
       throw error;
     }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Clear local state
+      setUser(null);
+      setProfile(null);
+    } catch (error) {
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateProfile = async (profileData: Partial<UserProfile>) => {
