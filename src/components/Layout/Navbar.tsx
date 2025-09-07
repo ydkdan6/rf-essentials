@@ -7,17 +7,19 @@ import { useCart } from '../../contexts/CartContext';
 
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const { items } = useCart();
   const navigate = useNavigate();
+
+  // Debug logging - remove this after fixing
+  console.log('Navbar render - loading:', loading, 'user:', user?.email || 'null');
 
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/'); // or '/auth' or wherever your login page is
+      navigate('/');
     } catch (error) {
       console.error('Error signing out:', error);
-      // Still navigate even if there's an error
       navigate('/');
     }
   };
@@ -41,7 +43,12 @@ const Navbar: React.FC = () => {
             <Link to="/products" className="text-gray-700 hover:text-purple-600 transition-colors">
               Products
             </Link>
-            {user && (
+            
+            {/* Authentication state handling */}
+            {loading ? (
+              <div className="text-gray-500 text-sm">Loading...</div>
+            ) : user ? (
+              // User is authenticated
               <>
                 <Link to="/cart" className="relative text-gray-700 hover:text-purple-600 transition-colors">
                   <ShoppingCart className="h-6 w-6" />
@@ -77,8 +84,8 @@ const Navbar: React.FC = () => {
                   </div>
                 </div>
               </>
-            )}
-            {!user && (
+            ) : (
+              // User is not authenticated
               <div className="flex items-center space-x-4">
                 <Link to="/signin" className="text-gray-700 hover:text-purple-600 transition-colors">
                   Sign In
@@ -113,7 +120,12 @@ const Navbar: React.FC = () => {
               <Link to="/products" className="text-gray-700 hover:text-purple-600 transition-colors">
                 Products
               </Link>
-              {user ? (
+              
+              {/* Mobile authentication state handling */}
+              {loading ? (
+                <div className="text-gray-500 text-sm">Loading...</div>
+              ) : user ? (
+                // User is authenticated - mobile
                 <>
                   <Link to="/cart" className="flex items-center space-x-2 text-gray-700 hover:text-purple-600 transition-colors">
                     <ShoppingCart className="h-5 w-5" />
@@ -138,6 +150,7 @@ const Navbar: React.FC = () => {
                   </button>
                 </>
               ) : (
+                // User is not authenticated - mobile
                 <>
                   <Link to="/signin" className="text-gray-700 hover:text-purple-600 transition-colors">
                     Sign In
